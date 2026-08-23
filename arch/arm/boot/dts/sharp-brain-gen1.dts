@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Sharp Brain first generation, based on MuCross TMPA9xx Linux 2.6.36:
+ * https://mucross.com/downloads/tx09-linux/Release-20110309/src/
+ * Copyright (C) 2010 Thomas Haase (Thomas.Haase@web.de)
+ */
+/dts-v1/;
+#include "tmpa910.dtsi"
+
+/ {
+	model = "Sharp Brain first generation";
+	compatible = "sharp,brain-gen1", "toshiba,tmpa910";
+
+	chosen {
+		bootargs = "console=ttyAMA0,115200";
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x04000000>;
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
