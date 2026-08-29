@@ -6,6 +6,8 @@
  * https://scrapbox.io/brain-hackers/PW-GC610
  * Modifier source (retrieved 2026-08-27):
  * https://wiki.brainux.org/beginners/get-started/
+ * Printable symbol layers:
+ * https://wiki.brainux.org/assets/images/keymap.png
  * Copyright Brainux Wiki contributors, licensed under CC BY-SA 4.0.
  *
  * GPIO use and scanning are based on the hardware-tested U-Boot Brain Gen1
@@ -31,10 +33,12 @@
 #define BRAIN_GEN1_DEBOUNCE_MS	20
 #define TMPA910_GPIO_DATA	0x3fc
 #define TMPA910_GPIO_ODE		0xc00
-#define BRAIN_GEN1_MODIFIERS	(BIT_ULL(5 * BRAIN_GEN1_COLS) | \
-				 BIT_ULL(5 * BRAIN_GEN1_COLS + 1) | \
-				 BIT_ULL(6 * BRAIN_GEN1_COLS + 1) | \
-				 BIT_ULL(7 * BRAIN_GEN1_COLS + 1))
+#define BRAIN_GEN1_SHIFT	BIT_ULL(5 * BRAIN_GEN1_COLS)
+#define BRAIN_GEN1_CTRL		BIT_ULL(5 * BRAIN_GEN1_COLS + 1)
+#define BRAIN_GEN1_ALT		BIT_ULL(6 * BRAIN_GEN1_COLS + 1)
+#define BRAIN_GEN1_SYMBOL	BIT_ULL(7 * BRAIN_GEN1_COLS + 1)
+#define BRAIN_GEN1_MODIFIERS	(BRAIN_GEN1_SHIFT | BRAIN_GEN1_CTRL | \
+				 BRAIN_GEN1_ALT)
 
 struct brain_gen1_keyboard {
 	struct input_dev *input;
@@ -43,11 +47,12 @@ struct brain_gen1_keyboard {
 	struct delayed_work poll_work;
 	u64 candidate;
 	u64 stable;
+	unsigned short active_codes[BRAIN_GEN1_ROWS * BRAIN_GEN1_COLS];
 	unsigned long candidate_since;
 	bool opened;
 };
 
-/* Indexed as KI row, then KO column.  KEY_RIGHTALT is the symbol modifier. */
+/* Indexed as KI row, then KO column.  The symbol key is handled internally. */
 static const unsigned short
 brain_gen1_keymap[BRAIN_GEN1_ROWS][BRAIN_GEN1_COLS] = {
 	[0] = { KEY_POWER, KEY_SEARCH, KEY_F1, KEY_F2, KEY_F3, KEY_F4,
@@ -60,9 +65,35 @@ brain_gen1_keymap[BRAIN_GEN1_ROWS][BRAIN_GEN1_COLS] = {
 		KEY_MINUS },
 	[6] = { 0, KEY_LEFTALT, KEY_VOLUMEUP, KEY_ZOOMIN, KEY_LEFT, KEY_UP,
 		KEY_DOWN, KEY_RIGHT },
-	[7] = { KEY_SPACE, KEY_RIGHTALT, KEY_VOLUMEDOWN, KEY_ZOOMOUT,
+	[7] = { KEY_SPACE, 0, KEY_VOLUMEDOWN, KEY_ZOOMOUT,
 		KEY_ESC, KEY_ENTER, KEY_BACKSPACE, KEY_DELETE },
 };
+
+static const unsigned short
+brain_gen1_symbol_keymap[BRAIN_GEN1_ROWS][BRAIN_GEN1_COLS] = {
+	[2] = { KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8 },
+	[3] = { 0, 0, KEY_GRAVE, KEY_EQUAL, KEY_BACKSLASH, KEY_SEMICOLON,
+		KEY_9, KEY_0 },
+	[4] = { 0, 0, 0, 0, 0, KEY_APOSTROPHE, KEY_LEFTBRACE,
+		KEY_RIGHTBRACE },
+	[5] = { 0, 0, 0, 0, 0, KEY_COMMA, KEY_DOT, KEY_SLASH },
+};
+
+static bool brain_gen1_is_symbol_key(unsigned int row, unsigned int col)
+{
+	return row == 2 || row == 3 || row == 4 ||
+		(row == 5 && col >= 5);
+}
+
+static unsigned short brain_gen1_code(unsigned int bit, bool symbol)
+{
+	unsigned int row = bit / BRAIN_GEN1_COLS;
+	unsigned int col = bit % BRAIN_GEN1_COLS;
+
+	if (symbol && brain_gen1_is_symbol_key(row, col))
+		return brain_gen1_symbol_keymap[row][col];
+	return brain_gen1_keymap[row][col];
+}
 
 static u64 brain_gen1_scan(struct brain_gen1_keyboard *kbd)
 {
@@ -84,8 +115,8 @@ static u64 brain_gen1_scan(struct brain_gen1_keyboard *kbd)
 	return keys;
 }
 
-static void brain_gen1_report_mask(struct brain_gen1_keyboard *kbd, u64 mask,
-				   bool pressed)
+static void brain_gen1_report_pressed(struct brain_gen1_keyboard *kbd,
+				      u64 mask, bool symbol)
 {
 	unsigned int bit;
 
@@ -94,10 +125,27 @@ static void brain_gen1_report_mask(struct brain_gen1_keyboard *kbd, u64 mask,
 
 		if (!(mask & BIT_ULL(bit)))
 			continue;
-		code = brain_gen1_keymap[bit / BRAIN_GEN1_COLS]
-					[bit % BRAIN_GEN1_COLS];
+		code = brain_gen1_code(bit, symbol);
+		kbd->active_codes[bit] = code;
 		if (code)
-			input_report_key(kbd->input, code, pressed);
+			input_report_key(kbd->input, code, true);
+	}
+}
+
+static void brain_gen1_report_released(struct brain_gen1_keyboard *kbd,
+				       u64 mask)
+{
+	unsigned int bit;
+
+	for (bit = 0; bit < BRAIN_GEN1_ROWS * BRAIN_GEN1_COLS; bit++) {
+		unsigned short code;
+
+		if (!(mask & BIT_ULL(bit)))
+			continue;
+		code = kbd->active_codes[bit];
+		if (code)
+			input_report_key(kbd->input, code, false);
+		kbd->active_codes[bit] = 0;
 	}
 }
 
@@ -106,12 +154,15 @@ static void brain_gen1_report(struct brain_gen1_keyboard *kbd, u64 keys)
 	u64 changed = keys ^ kbd->stable;
 	u64 pressed = changed & keys;
 	u64 released = changed & ~keys;
+	bool symbol = keys & BRAIN_GEN1_SYMBOL;
 
 	/* Chords must reach the VT layer with modifiers already asserted. */
-	brain_gen1_report_mask(kbd, pressed & BRAIN_GEN1_MODIFIERS, true);
-	brain_gen1_report_mask(kbd, pressed & ~BRAIN_GEN1_MODIFIERS, true);
-	brain_gen1_report_mask(kbd, released & ~BRAIN_GEN1_MODIFIERS, false);
-	brain_gen1_report_mask(kbd, released & BRAIN_GEN1_MODIFIERS, false);
+	brain_gen1_report_pressed(kbd, pressed & BRAIN_GEN1_MODIFIERS, false);
+	brain_gen1_report_pressed(kbd, pressed & ~BRAIN_GEN1_MODIFIERS &
+				   ~BRAIN_GEN1_SYMBOL, symbol);
+	brain_gen1_report_released(kbd, released & ~BRAIN_GEN1_MODIFIERS &
+				    ~BRAIN_GEN1_SYMBOL);
+	brain_gen1_report_released(kbd, released & BRAIN_GEN1_MODIFIERS);
 	kbd->stable = keys;
 	input_sync(kbd->input);
 }
@@ -193,10 +244,15 @@ static int brain_gen1_keyboard_probe(struct platform_device *pdev)
 	input_set_drvdata(input, kbd);
 	__set_bit(EV_REP, input->evbit);
 	for (row = 0; row < BRAIN_GEN1_ROWS; row++)
-		for (col = 0; col < BRAIN_GEN1_COLS; col++)
-			if (brain_gen1_keymap[row][col])
-				input_set_capability(input, EV_KEY,
-					brain_gen1_keymap[row][col]);
+		for (col = 0; col < BRAIN_GEN1_COLS; col++) {
+			unsigned short code = brain_gen1_keymap[row][col];
+
+			if (code)
+				input_set_capability(input, EV_KEY, code);
+			code = brain_gen1_symbol_keymap[row][col];
+			if (code)
+				input_set_capability(input, EV_KEY, code);
+		}
 
 	platform_set_drvdata(pdev, kbd);
 	error = input_register_device(input);
