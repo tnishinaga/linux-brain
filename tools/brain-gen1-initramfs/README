@@ -1,0 +1,24 @@
+Sharp Brain Gen1 built-in rescue initramfs
+==========================================
+
+The host BusyBox is an AArch64 dynamically linked binary and cannot execute
+on the ARM926EJ-S target.  No ARMv5 static BusyBox source or binary was locally
+available when this bring-up image was prepared, so this directory provides a
+small GPL-2.0-only static rescue shell without requiring a network download.
+
+Generate a deterministic newc archive (ordering, ownership and timestamps are
+fixed):
+
+  tools/brain-gen1-initramfs/build.sh /tmp/brain-gen1-initramfs.cpio
+
+Then configure an out-of-tree kernel after loading brain_gen1_defconfig:
+
+  scripts/config --file OUT/.config \
+    --set-str INITRAMFS_SOURCE /tmp/brain-gen1-initramfs.cpio \
+    --enable INITRAMFS_COMPRESSION_NONE
+  make O=OUT ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- olddefconfig
+
+The same static executable is installed as /init and /bin/sh.  PID 1 mounts
+devtmpfs, proc, sysfs and devpts, then starts controlling-terminal rescue
+shells on tty0 and ttyAMA0.  The tty0 shell accepts input from the Linux VT
+keyboard path while the serial shell preserves recovery access.
