@@ -31,6 +31,7 @@
 #define BRAIN_GEN1_COLS		8
 #define BRAIN_GEN1_POLL_MS	10
 #define BRAIN_GEN1_DEBOUNCE_MS	20
+#define BRAIN_GEN1_SETTLE_US	10
 #define TMPA910_GPIO_DATA	0x3fc
 #define TMPA910_GPIO_ODE		0xc00
 #define BRAIN_GEN1_SHIFT	BIT_ULL(5 * BRAIN_GEN1_COLS)
@@ -104,8 +105,15 @@ static u64 brain_gen1_scan(struct brain_gen1_keyboard *kbd)
 		u32 rows;
 		unsigned int row;
 
+		/*
+		 * Break before make.  Otherwise the previous open-drain KO can
+		 * remain low during the next KI sample, reporting one key in
+		 * two adjacent matrix columns.
+		 */
+		writel(0xff, kbd->gpiob + TMPA910_GPIO_DATA);
+		udelay(BRAIN_GEN1_SETTLE_US);
 		writel(0xff & ~BIT(col), kbd->gpiob + TMPA910_GPIO_DATA);
-		udelay(5);
+		udelay(BRAIN_GEN1_SETTLE_US);
 		rows = ~readl(kbd->gpioa + TMPA910_GPIO_DATA) & 0xff;
 		for (row = 0; row < BRAIN_GEN1_ROWS; row++)
 			if (rows & BIT(row))
