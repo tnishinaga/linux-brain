@@ -24,6 +24,7 @@
 #define TMPA9XX_GPIO_DIR		0x400
 #define TMPA9XX_GPIO_FR1		0x424
 #define TMPA9XX_SDHI_PINS	0xff
+#define TMPA9XX_SDHI_RESET_RELEASE	(BIT(0) | BIT(1))
 
 struct tmpa9xx_sdhi {
 	struct tmio_mmc_data pdata;
@@ -85,7 +86,13 @@ static void tmpa9xx_sdhi_reset(struct tmio_mmc_host *host)
 {
 	sd_ctrl_write16(host, CTL_RESET_SD, 0);
 	usleep_range(10000, 11000);
-	sd_ctrl_write16(host, CTL_RESET_SD, 1);
+	/*
+	 * TMPA910 requires bit 1 as well as bit 0 on reset release.
+	 * With 0x0001, CMD24 succeeds but transmits zero-filled sectors.
+	 * 0x0003 matches WinCE and passes 16-bit PIO write/readback tests.
+	 * The internal function of bit 1 is not publicly documented.
+	 */
+	sd_ctrl_write16(host, CTL_RESET_SD, TMPA9XX_SDHI_RESET_RELEASE);
 	usleep_range(10000, 11000);
 }
 
