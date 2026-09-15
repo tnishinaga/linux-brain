@@ -2,10 +2,25 @@
 /*
  * GPIOC and Port T support for Toshiba TMPA9xx.
  *
+ * This file is a modern Linux GPIO-framework port of the MuCross TMPA9xx/TX09
+ * GPIO driver from:
+ * https://mucross.com/downloads/tx09-linux/Release-20110309/src/
+ *
+ * Original MuCross source: linux/arch/arm/mach-tmpa9xx/gpio.c
+ * Copyright (c) 2009, 2010 Florian Boor <florian.boor@kernelconcepts.de>
+ * Based on mach-ep93xx/gpio.c
+ * Copyright (c) 2008 Ryan Mallon <ryan@bluewatersys.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  * Register layout and interrupt mux programming are taken from the
  * TMPA910CRA hardware manual.  PC7 is the active-low AK4182A PENIRQ input
  * on Sharp Brain Gen1.  Port T has no interrupt block on this SoC and is
  * used here for the software-controlled SSP0 chip-select GPIO.
+ *
+ * Assisted-by: Codex:gpt-5.6 sol
  */
 
 #include <linux/bitops.h>
