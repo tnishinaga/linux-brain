@@ -22,6 +22,13 @@ menuconfig GPIOLIB
 
 if GPIOLIB
 
+config GPIO_TMPA9XX
+	tristate "TMPA9xx GPIO controller"
+	depends on ARCH_TMPA9XX
+	select GPIOLIB_IRQCHIP
+	help
+	  Enable GPIO support for the Toshiba TMPA9xx GPIOC and Port T blocks.
+
 config GPIOLIB_FASTPATH_LIMIT
 	int "Maximum number of GPIOs for fast path"
 	range 32 512
