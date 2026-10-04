@@ -84,7 +84,7 @@ static void tmpa9xx_sdhi_set_clock(struct tmio_mmc_host *host,
 	tmpa9xx_sdhi_clk_start(host);
 }
 
-static void tmpa9xx_sdhi_reset(struct tmio_mmc_host *host)
+static void tmpa9xx_sdhi_reset(struct tmio_mmc_host *host, bool preserve)
 {
 	sd_ctrl_write16(host, CTL_RESET_SD, 0);
 	usleep_range(10000, 11000);
